@@ -1,52 +1,119 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESP32 Cloud Monitor</title>
+    <title>ESP32 Telemetría en la Nube (Render)</title>
     <style>
-        body { font-family: Arial, sans-serif; background: #121212; color: #fff; text-align: center; margin: 0; padding: 20px; }
-        .card { background: #1e1e1e; border-radius: 12px; padding: 20px; margin: 15px auto; max-width: 350px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
-        .status { font-size: 24px; font-weight: bold; }
-        .val { font-size: 36px; font-weight: bold; color: #3498db; margin: 10px 0; }
-        .btn { display: inline-block; padding: 12px 24px; background: #3498db; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            margin-top: 20px;
+        }
+        .card {
+            background: #1e1e1e;
+            border-radius: 12px;
+            padding: 25px;
+            margin: 20px auto;
+            max-width: 380px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+        .status {
+            font-size: 28px;
+            font-weight: bold;
+            margin: 15px 0;
+            color: #888;
+        }
+        .val {
+            font-size: 42px;
+            font-weight: bold;
+            color: #3498db;
+            margin: 10px 0;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background-color: #2980b9;
+        }
+        .btn:active {
+            transform: scale(0.98);
+        }
+        .online-tag {
+            font-size: 12px;
+            color: #2ecc71;
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
-    <h2>ESP32 Cloud Telemetry (Render)</h2>
-    
+
+    <h1>ESP32 Cloud Telemetry (Render)</h1>
+
     <div class="card">
-        <h3>LED Control</h3>
-        <div id="led" class="status">--</div>
-        <br>
-        <button class="btn" onclick="toggleLED()">Toggle LED via Cloud</button>
+        <h3>Control del LED</h3>
+        <div id="ledState" class="status">Cargando...</div>
+        <button class="btn" onclick="toggleLed()">Conmutar LED vía Cloud</button>
     </div>
 
     <div class="card">
-        <h3>LDR Light Sensor</h3>
-        <div id="luz" class="val">--%</div>
-        <small>ADC Raw Value: <span id="raw">--</span> / 4095</small>
+        <h3>Sensor de Luz LDR</h3>
+        <div id="ldrValue" class="val">--%</div>
+        <small>Valor Bruto ADC: <span id="rawADC">--</span> / 4095</small>
+        <div class="online-tag">● Sincronizado con Render</div>
     </div>
 
     <script>
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const ws = new WebSocket(`${protocol}//${window.location.host}`);
+        // Función para consultar el último estado al servidor
+        function updateTelemetry() {
+            fetch('/api/telemetry-state')
+                .then(response => response.json())
+                .then(data => {
+                    // Actualizar estado del LED
+                    const ledElement = document.getElementById('ledState');
+                    if (data.led === 1 || data.led === true) {
+                        ledElement.innerText = "ENCENDIDO";
+                        ledElement.style.color = "#2ecc71";
+                    } else {
+                        ledElement.innerText = "APAGADO";
+                        ledElement.style.color = "#e74c3c";
+                    }
 
-        ws.onmessage = (event) => {
-            const msg = JSON.parse(event.data);
-            if (msg.type === 'telemetry_update') {
-                document.getElementById('luz').innerText = msg.data.percentage + '%';
-                document.getElementById('raw').innerText = msg.data.raw;
-                
-                const ledElement = document.getElementById('led');
-                ledElement.innerText = msg.data.led ? 'ON' : 'OFF';
-                ledElement.style.color = msg.data.led ? '#2ecc71' : '#e74c3c';
-            }
-        };
-
-        function toggleLED() {
-            ws.send(JSON.stringify({ type: 'command', action: 'toggle' }));
+                    // Actualizar lecturas del LDR
+                    document.getElementById('ldrValue').innerText = (data.percentage || 0) + "%";
+                    document.getElementById('rawADC').innerText = data.raw || 0;
+                })
+                .catch(err => console.error("Error al obtener datos:", err));
         }
+
+        // Solicitar al servidor que envíe la orden de conmutar LED a la ESP32
+        function toggleLed() {
+            fetch('/api/toggle-led', { method: 'POST' })
+                .then(response => response.json())
+                .then(res => {
+                    console.log("Comando enviado al servidor:", res);
+                })
+                .catch(err => console.error("Error enviando comando:", err));
+        }
+
+        // Actualizar la interfaz cada 1 segundo
+        setInterval(updateTelemetry, 1000);
+        updateTelemetry();
     </script>
 </body>
 </html>
