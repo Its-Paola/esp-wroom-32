@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Cloud Monitor</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #121212; color: #fff; text-align: center; margin: 0; padding: 20px; }
+        .card { background: #1e1e1e; border-radius: 12px; padding: 20px; margin: 15px auto; max-width: 350px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        .status { font-size: 24px; font-weight: bold; }
+        .val { font-size: 36px; font-weight: bold; color: #3498db; margin: 10px 0; }
+        .btn { display: inline-block; padding: 12px 24px; background: #3498db; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h2>ESP32 Cloud Telemetry (Render)</h2>
+    
+    <div class="card">
+        <h3>LED Control</h3>
+        <div id="led" class="status">--</div>
+        <br>
+        <button class="btn" onclick="toggleLED()">Toggle LED via Cloud</button>
+    </div>
+
+    <div class="card">
+        <h3>LDR Light Sensor</h3>
+        <div id="luz" class="val">--%</div>
+        <small>ADC Raw Value: <span id="raw">--</span> / 4095</small>
+    </div>
+
+    <script>
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(`${protocol}//${window.location.host}`);
+
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'telemetry_update') {
+                document.getElementById('luz').innerText = msg.data.percentage + '%';
+                document.getElementById('raw').innerText = msg.data.raw;
+                
+                const ledElement = document.getElementById('led');
+                ledElement.innerText = msg.data.led ? 'ON' : 'OFF';
+                ledElement.style.color = msg.data.led ? '#2ecc71' : '#e74c3c';
+            }
+        };
+
+        function toggleLED() {
+            ws.send(JSON.stringify({ type: 'command', action: 'toggle' }));
+        }
+    </script>
+</body>
+</html>
