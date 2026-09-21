@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESP32 WebSocket Realtime Telemetry</title>
+    <title>ESP32 MQTT/WebSocket Realtime</title>
+    <!-- Cliente MQTT vía WebSockets para el navegador -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; background: #121212; color: #fff; text-align: center; margin: 0; padding: 20px; }
         .card { background: #1e1e1e; border-radius: 12px; padding: 25px; margin: 20px auto; max-width: 380px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
@@ -16,65 +18,61 @@
 </head>
 <body>
 
-    <h1>ESP32 Telemetría en Tiempo Real (WebSocket)</h1>
+    <h1>ESP32 Telemetría en Tiempo Real (MQTT/WebSocket)</h1>
 
     <div class="card">
         <h3>Control del LED</h3>
         <div id="ledState" class="status">Conectando...</div>
-        <button class="btn" onclick="toggleLed()">Conmutar LED (Instantáneo)</button>
+        <button class="btn" onclick="toggleLed()">Conmutar LED (Tiempo Real)</button>
     </div>
 
     <div class="card">
         <h3>Luminosidad LDR</h3>
         <div id="ldrValue" class="val">--%</div>
         <small>ADC Bruto: <span id="rawADC">--</span> / 4095</small>
-        <div id="connectionStatus" class="ws-tag">⚡ Conexión WebSocket Activa</div>
+        <div id="connectionStatus" class="ws-tag"> Conectando a MQTT Broker...</div>
     </div>
 
     <script>
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws/client`;
-        let ws;
+        const TOPIC_TELEMETRY = "esp32/paola/telemetry";
+        const TOPIC_COMMAND = "esp32/paola/command";
 
-        function connectWS() {
-            ws = new WebSocket(wsUrl);
+        // Conexión por WebSocket Seguro al broker MQTT
+        const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
 
-            ws.onopen = () => {
-                document.getElementById('connectionStatus').innerText = "⚡ Conectado en Tiempo Real (WebSocket)";
-                document.getElementById('connectionStatus').style.color = "#2ecc71";
-            };
+        client.on('connect', () => {
+            document.getElementById('connectionStatus').innerText = "⚡ Conectado a MQTT sobre WebSockets";
+            document.getElementById('connectionStatus').style.color = "#2ecc71";
+            client.subscribe(TOPIC_TELEMETRY);
+        });
 
-            ws.onmessage = (event) => {
-                const msg = JSON.parse(event.data);
-                if (msg.type === 'telemetry') {
-                    const data = msg.data;
-                    const ledEl = document.getElementById('ledState');
-                    if (data.led === 1 || data.led === true) {
-                        ledEl.innerText = "ENCENDIDO";
-                        ledEl.style.color = "#2ecc71";
-                    } else {
-                        ledEl.innerText = "APAGADO";
-                        ledEl.style.color = "#e74c3c";
-                    }
-                    document.getElementById('ldrValue').innerText = (data.percentage || 0) + "%";
-                    document.getElementById('rawADC').innerText = data.raw || 0;
+        client.on('message', (topic, message) => {
+            if (topic === TOPIC_TELEMETRY) {
+                const data = JSON.parse(message.toString());
+                const ledEl = document.getElementById('ledState');
+                
+                if (data.led === 1 || data.led === true) {
+                    ledEl.innerText = "ENCENDIDO";
+                    ledEl.style.color = "#2ecc71";
+                } else {
+                    ledEl.innerText = "APAGADO";
+                    ledEl.style.color = "#e74c3c";
                 }
-            };
 
-            ws.onclose = () => {
-                document.getElementById('connectionStatus').innerText = "❌ Reconectando WebSocket...";
-                document.getElementById('connectionStatus').style.color = "#e74c3c";
-                setTimeout(connectWS, 2000);
-            };
-        }
+                document.getElementById('ldrValue').innerText = (data.percentage || 0) + "%";
+                document.getElementById('rawADC').innerText = data.raw || 0;
+            }
+        });
+
+        client.on('error', (err) => {
+            console.error('Error MQTT:', err);
+            document.getElementById('connectionStatus').innerText = "❌ Error de conexión MQTT";
+            document.getElementById('connectionStatus').style.color = "#e74c3c";
+        });
 
         function toggleLed() {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ action: 'toggle' }));
-            }
+            client.publish(TOPIC_COMMAND, JSON.stringify({ action: "toggle" }));
         }
-
-        connectWS();
     </script>
 </body>
 </html>
