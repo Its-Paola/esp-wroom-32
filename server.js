@@ -2,8 +2,6 @@ const express = require('express');
 const path = require('path');
 
 const app = express();
-
-// Serve static frontend files
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/', (req, res) => {
@@ -12,5 +10,5 @@ app.get('/', (req, res) => {
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`Render Web Dashboard running on port ${PORT}`);
+  console.log(`Servidor web corriendo en puerto ${PORT}`);
 });
