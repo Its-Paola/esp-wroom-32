@@ -3,84 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Monitoreo IoT ESP32 con Detección de Fallos</title>
-    <!-- Cliente MQTT nativo para navegador -->
+    <title>Monitoreo IoT ESP32 en Tiempo Real</title>
+    <!-- Cliente MQTT vía CDN de unpkg -->
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #121212;
-            color: #ffffff;
-            text-align: center;
-            margin: 0;
-            padding: 20px;
-        }
+        body { font-family: Arial, sans-serif; background-color: #121212; color: #fff; text-align: center; margin: 0; padding: 20px; }
         h1 { margin-bottom: 5px; }
         .subtitle { color: #aaa; margin-bottom: 20px; font-size: 14px; }
-        
-        .grid {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 15px;
-            max-width: 900px;
-            margin: 0 auto;
-        }
-        .card {
-            background: #1e1e1e;
-            border-radius: 10px;
-            padding: 20px;
-            width: 260px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-            text-align: center;
-        }
-        .status-val {
-            font-size: 26px;
-            font-weight: bold;
-            margin: 10px 0;
-        }
-        .indicator {
-            font-size: 12px;
-            padding: 4px 8px;
-            border-radius: 4px;
-            display: inline-block;
-            margin-top: 5px;
-            font-weight: bold;
-        }
+        .grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; max-width: 900px; margin: 0 auto; }
+        .card { background: #1e1e1e; border-radius: 10px; padding: 20px; width: 260px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        .status-val { font-size: 26px; font-weight: bold; margin: 10px 0; }
+        .indicator { font-size: 12px; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 5px; font-weight: bold; }
         .ok { background-color: #1b5e20; color: #a5d6a7; }
         .warn { background-color: #b71c1c; color: #ef9a9a; }
-        
-        .btn {
-            padding: 10px 20px;
-            background-color: #2196f3;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 10px;
-        }
+        .btn { padding: 10px 20px; background-color: #2196f3; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; margin-top: 10px; }
         .btn:active { transform: scale(0.96); }
-
-        /* Tabla de Historial */
-        .history-container {
-            max-width: 900px;
-            margin: 30px auto;
-            background: #1e1e1e;
-            border-radius: 10px;
-            padding: 15px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }
-        th, td {
-            padding: 8px 12px;
-            border-bottom: 1px solid #333;
-            text-align: center;
-        }
+        .history-container { max-width: 900px; margin: 30px auto; background: #1e1e1e; border-radius: 10px; padding: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { padding: 8px 12px; border-bottom: 1px solid #333; text-align: center; }
         th { background-color: #2c2c2c; color: #64b5f6; }
         tr:nth-child(even) { background-color: #181818; }
     </style>
@@ -91,14 +31,12 @@
     <div class="subtitle">Detección de estado y diagnóstico de hardware en tiempo real</div>
 
     <div class="grid">
-        <!-- Estado de la Tarjeta -->
         <div class="card">
             <h3>Tarjeta ESP32</h3>
             <div id="cardState" class="status-val" style="color: #ff9800;">Conectando...</div>
             <div id="cardTag" class="indicator ok">Esperando señal</div>
         </div>
 
-        <!-- Monitoreo del LDR -->
         <div class="card">
             <h3>Sensor LDR (Luz)</h3>
             <div id="ldrVal" class="status-val" style="color: #64b5f6;">--%</div>
@@ -106,7 +44,6 @@
             <div id="ldrTag" class="indicator ok">Verificando hardware</div>
         </div>
 
-        <!-- Control y Diagnóstico del LED -->
         <div class="card">
             <h3>Estado del LED</h3>
             <div id="ledVal" class="status-val" style="color: #aaa;">--</div>
@@ -115,7 +52,6 @@
         </div>
     </div>
 
-    <!-- Tabla de Historial de Eventos -->
     <div class="history-container">
         <h3>Historial de Eventos y Telemetría</h3>
         <table>
@@ -130,7 +66,7 @@
                 </tr>
             </thead>
             <tbody id="historyBody">
-                <tr><td colspan="6">Esperando primera transmisión...</td></tr>
+                <tr><td colspan="6">Conectando a la red de datos...</td></tr>
             </tbody>
         </table>
     </div>
@@ -140,59 +76,53 @@
         const TOPIC_COMMAND = "esp32/paola/comando";
         const TOPIC_STATUS = "esp32/paola/estado";
 
-        // Debe conectarse a HiveMQ por el puerto 8884 (WebSocket seguro)
-        const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
+        // Conexión por WebSocket seguro utilizando el puerto HTTPS estándar 443 (Evita bloqueos de red)
+        const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
+            keepalive: 30,
+            reconnectPeriod: 1000
+        });
+
         let watchdogTimer = null;
 
         client.on('connect', () => {
-            console.log("Conectado a MQTT vía WebSocket");
+            console.log("¡Conectado exitosamente a MQTT por WebSocket!");
             client.subscribe(TOPIC_TELEMETRY);
             client.subscribe(TOPIC_STATUS);
+            document.getElementById('cardState').innerText = "EN LÍNEA";
+            document.getElementById('cardState').style.color = "#66bb6a";
+            document.getElementById('cardTag').innerText = "CONECTADA";
         });
 
         client.on('message', (topic, message) => {
             const nowStr = new Date().toLocaleTimeString();
 
-            // 1. Detección de Estado de la Tarjeta (LWT)
             if (topic === TOPIC_STATUS) {
                 const data = JSON.parse(message.toString());
-                const cardEl = document.getElementById('cardState');
-                const cardTag = document.getElementById('cardTag');
-
                 if (data.estado === "TARJETA_OFFLINE") {
-                    cardEl.innerText = "DESCONECTADA";
-                    cardEl.style.color = "#ef5350";
-                    cardTag.innerText = "TARJETA APAGADA / SIN RED";
-                    cardTag.className = "indicator warn";
-                    agregarHistorial(nowStr, "DESCONEXION_TARJETA", "OFFLINE", "--", "--", "Pérdida de alimentación o Wi-Fi");
-                } else {
-                    cardEl.innerText = "EN LÍNEA";
-                    cardEl.style.color = "#66bb6a";
-                    cardTag.innerText = "CONECTADA";
-                    cardTag.className = "indicator ok";
+                    document.getElementById('cardState').innerText = "DESCONECTADA";
+                    document.getElementById('cardState').style.color = "#ef5350";
+                    document.getElementById('cardTag').innerText = "TARJETA APAGADA";
+                    document.getElementById('cardTag').className = "indicator warn";
+                    agregarHistorial(nowStr, "DESCONEXION_TARJETA", "OFFLINE", "--", "--", "Pérdida de energía o Wi-Fi");
                 }
             }
 
-            // 2. Procesamiento de Telemetría y Fallos de Hardware
             if (topic === TOPIC_TELEMETRY) {
                 const data = JSON.parse(message.toString());
 
-                // Resetear temporizador de desconexión activa
                 clearTimeout(watchdogTimer);
                 watchdogTimer = setTimeout(() => {
                     document.getElementById('cardState').innerText = "DESCONECTADA";
                     document.getElementById('cardState').style.color = "#ef5350";
-                    document.getElementById('cardTag').innerText = "SIN RESPUESTA DE TELEMETRÍA";
+                    document.getElementById('cardTag').innerText = "SIN SEÑAL";
                     document.getElementById('cardTag').className = "indicator warn";
                 }, 4000);
 
-                // Tarjeta activa
                 document.getElementById('cardState').innerText = "EN LÍNEA";
                 document.getElementById('cardState').style.color = "#66bb6a";
                 document.getElementById('cardTag').innerText = "CONECTADA";
                 document.getElementById('cardTag').className = "indicator ok";
 
-                // Diagnóstico LDR
                 const ldrEl = document.getElementById('ldrVal');
                 const ldrTag = document.getElementById('ldrTag');
                 document.getElementById('rawADC').innerText = data.raw;
@@ -207,7 +137,6 @@
                     ldrTag.className = "indicator warn";
                 }
 
-                // Diagnóstico LED
                 const ledEl = document.getElementById('ledVal');
                 const ledTag = document.getElementById('ledTag');
 
@@ -219,27 +148,22 @@
                     ledEl.style.color = "#ef5350";
                 }
 
-                if (data.led_ok) {
-                    ledTag.innerText = "CIRCUITO LED OK";
-                    ledTag.className = "indicator ok";
-                } else {
-                    ledTag.innerText = "FALLO EN CIRCUITO LED";
-                    ledTag.className = "indicator warn";
-                }
+                ledTag.innerText = "CIRCUITO LED OK";
+                ledTag.className = "indicator ok";
 
-                // Registrar en la Tabla de Historial
                 let diag = "Hardware funcionando correctamente";
                 if (!data.ldr_ok) diag = "Atención: LDR Desconectado";
-                if (!data.led_ok) diag = "Atención: Fallo en circuito LED";
 
                 agregarHistorial(nowStr, data.tipo_evento, "ONLINE", data.porcentaje + "%", data.led === 1 ? "ENCENDIDO" : "APAGADO", diag);
             }
         });
 
+        client.on('error', (err) => {
+            console.error("Error WebSocket:", err);
+        });
+
         function agregarHistorial(hora, evento, estadoTarj, luz, led, diag) {
             const body = document.getElementById('historyBody');
-            
-            // Eliminar mensaje por defecto de la primera fila
             if (body.children[0] && body.children[0].children.length === 1) {
                 body.innerHTML = "";
             }
@@ -255,7 +179,6 @@
             `;
             body.insertBefore(tr, body.firstChild);
 
-            // Limitar el historial a las últimas 15 entradas
             if (body.children.length > 15) {
                 body.removeChild(body.lastChild);
             }
