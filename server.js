@@ -1,49 +1,66 @@
 const express = require('express');
+const http = require('http');
+const WebSocket = require('ws');
 const path = require('path');
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
-// Servir archivos de la carpeta public
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Variables de estado global
+let espSocket = null;
 let latestData = { raw: 0, percentage: 0, led: 0 };
-let pendingToggle = false;
 
-// 1. Endpoint que recibe la telemetría enviada por la ESP32
-app.post('/api/telemetry', (req, res) => {
-  try {
-    const { raw, percentage, led } = req.body;
-    latestData = { raw, percentage, led };
+wss.on('connection', (ws, req) => {
+  const pathname = req.url;
 
-    // Responder a la ESP32 enviando si hay una orden de conmutar pendiente
-    const responseCommand = { toggle: pendingToggle };
-    pendingToggle = false; // Limpiar orden una vez notificada
+  if (pathname === '/ws/esp32') {
+    console.log('--- ESP32 Conectado vía WebSocket ---');
+    espSocket = ws;
 
-    res.json(responseCommand);
-  } catch (err) {
-    res.status(400).json({ error: 'Datos inválidos' });
+    ws.on('message', (message) => {
+      try {
+        latestData = JSON.parse(message.toString());
+        // Retransmitir en tiempo real a los navegadores
+        wss.clients.forEach((client) => {
+          if (client !== espSocket && client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({ type: 'telemetry', data: latestData }));
+          }
+        });
+      } catch (e) {
+        console.error('Error parseando JSON de ESP32:', e);
+      }
+    });
+
+    ws.on('close', () => {
+      console.log('ESP32 Desconectado');
+      espSocket = null;
+    });
+
+  } else if (pathname === '/ws/client') {
+    console.log('--- Cliente Web Conectado ---');
+    // Enviar datos actuales al conectar
+    ws.send(JSON.stringify({ type: 'telemetry', data: latestData }));
+
+    ws.on('message', (message) => {
+      try {
+        const cmd = JSON.parse(message.toString());
+        if (cmd.action === 'toggle' && espSocket && espSocket.readyState === WebSocket.OPEN) {
+          espSocket.send(JSON.stringify({ action: 'toggle' }));
+        }
+      } catch (e) {
+        console.error('Error parseando comando Web:', e);
+      }
+    });
   }
 });
 
-// 2. Endpoint que consulta la página web para actualizar la pantalla
-app.get('/api/telemetry-state', (req, res) => {
-  res.json(latestData);
-});
-
-// 3. Endpoint que llama el botón de la página web para cambiar el estado del LED
-app.post('/api/toggle-led', (req, res) => {
-  pendingToggle = true;
-  res.json({ success: true, message: 'Orden registrada para la ESP32' });
-});
-
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`Servidor escuchando en puerto ${PORT}`);
+server.listen(PORT, () => {
+  console.log(`Servidor WebSocket activo en puerto ${PORT}`);
 });
