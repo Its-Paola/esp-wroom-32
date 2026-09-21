@@ -140,6 +140,7 @@
         const TOPIC_COMMAND = "esp32/paola/comando";
         const TOPIC_STATUS = "esp32/paola/estado";
 
+        // Debe conectarse a HiveMQ por el puerto 8884 (WebSocket seguro)
         const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt');
         let watchdogTimer = null;
 
